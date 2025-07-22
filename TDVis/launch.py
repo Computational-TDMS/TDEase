@@ -7,12 +7,19 @@ from streamlit.web import cli as stcli  # <-- Add this import
 import traceback
 import logging  # 新增日志模块
 
+# 静默所有标准输出和错误输出
+sys.stdout = open(os.devnull, 'w')
+sys.stderr = open(os.devnull, 'w')
+
 # 初始化日志配置
 logging.basicConfig(
     filename='launch_error.log',
     level=logging.ERROR,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+# 屏蔽Streamlit和依赖库的INFO/WARNING输出
+logging.getLogger('streamlit').setLevel(logging.ERROR)
+logging.getLogger('streamlit.runtime.caching.cache_data_api').setLevel(logging.ERROR)
 
 def resolve_path(path):
     # 添加打包环境下的路径处理
@@ -23,15 +30,38 @@ def resolve_path(path):
     resolved_path = os.path.abspath(os.path.join(base_path, path))
     return resolved_path
 
+def validate_mainpage_exists():
+    """验证MainPage.py文件是否存在"""
+    mainpage_path = resolve_path("MainPage.py")
+    if not os.path.exists(mainpage_path):
+        error_msg = f"MainPage.py文件不存在: {mainpage_path}"
+        logging.error(error_msg)
+        print(error_msg)
+        return False
+    return True
+
 if __name__ == "__main__":
     try:
+        # 验证当前工作目录
+        current_dir = os.getcwd()
+        print(f"当前工作目录: {current_dir}")
+        
+        # 验证MainPage.py是否存在
+        if not validate_mainpage_exists():
+            raise FileNotFoundError("MainPage.py文件不存在")
+        
         sys.path.insert(0, os.getcwd())
+        
+        # 获取MainPage.py的绝对路径
+        mainpage_path = resolve_path("MainPage.py")
+        print(f"MainPage.py路径: {mainpage_path}")
+        
         # 关键修改：显式关闭开发模式（或移除端口参数）
         sys.argv = [
             "streamlit",
             "run",
-            resolve_path("MainPage.py"),
-            "--logger.level=debug",
+            mainpage_path,
+            "--logger.level=error",
             "--global.developmentMode=false"  # 显式关闭开发模式
         ]
         exit_code = stcli.main()

@@ -7,12 +7,19 @@ from streamlit.web import cli as stcli  # <-- Add this import
 import traceback
 import logging  # 新增日志模块
 
+# 静默所有标准输出和错误输出
+sys.stdout = open(os.devnull, 'w')
+sys.stderr = open(os.devnull, 'w')
+
 # 初始化日志配置
 logging.basicConfig(
     filename='launch_error.log',
     level=logging.ERROR,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+# 屏蔽Streamlit和依赖库的INFO/WARNING输出
+logging.getLogger('streamlit').setLevel(logging.ERROR)
+logging.getLogger('streamlit.runtime.caching.cache_data_api').setLevel(logging.ERROR)
 
 def resolve_path(path):
     # 添加打包环境下的路径处理
@@ -31,7 +38,7 @@ if __name__ == "__main__":
             "streamlit",
             "run",
             resolve_path("MainPage_web.py"),
-            "--logger.level=debug",
+            "--logger.level=error",
             "--global.developmentMode=false"  # 显式关闭开发模式
         ]
         exit_code = stcli.main()

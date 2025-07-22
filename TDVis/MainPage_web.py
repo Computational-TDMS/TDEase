@@ -80,7 +80,7 @@ class MainPage():
                 self._default_page()
 
     def _show_landing_page(self):
-            st.markdown("# Welcome TDvis !🎉")
+            st.markdown("# Welcome to TDvis !🎉")
             st.markdown("**浙江大学化学系分析测试中心色谱与质谱分中心**")
             st.markdown("*Top-down质谱数据报告可视化网站*")
             if st.button("进入网站"):

@@ -113,7 +113,8 @@ TDpipe uses PyQt for its GUI, located in the `GUI` folder.
 Our web service is built on [Streamlit](https://docs.streamlit.io/develop/api-reference). For collaborative development and debugging, run the following command in the TDvis folder:
 
 ```pwsh
-streamlit run MainPage.py
+cd TDvis
+python launch.py  / python launch_web.py
 ```
 
 2. **Packaging**

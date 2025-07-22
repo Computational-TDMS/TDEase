@@ -33,21 +33,24 @@ class CalculateWidgets:
         ).fillna(0)
 
     def near_peak_process(self, data):
-        """查找指定质量附近的邻近峰（从feature_state获取参数）"""
+        """查找指定质量附近的邻近峰（直接使用标准化列名）"""
         if data.empty or pd.isna(st.session_state.feature_state.get('selected_mass')):
+            return pd.DataFrame()
+
+        # 检查必要的列是否存在
+        if 'mass' not in data.columns or 'intensity' not in data.columns:
+            st.error("数据缺少必要的mass或intensity列")
             return pd.DataFrame()
 
         # 从feature_state获取参数
         target_mass = float(st.session_state.feature_state['selected_mass'])
         neighbor_range = float(st.session_state.feature_state['neighbor_range'])
         neighbour_limit = float(st.session_state.feature_state['neighbour_limit'])
-        mass_col = st.session_state.feature_state['mass_col']
-        intensity_col = st.session_state.feature_state['intensity_col']
 
         # 生成相对强度百分比（显式类型转换）
-        max_intensity = float(data[intensity_col].max())
+        max_intensity = float(data['intensity'].max())
         data['Relative Intensity (%)'] = pd.to_numeric(
-            (data[intensity_col] / max_intensity * 100 if max_intensity != 0 else 0),
+            (data['intensity'] / max_intensity * 100 if max_intensity != 0 else 0),
             errors='coerce'
         ).round(2)
 
@@ -55,17 +58,17 @@ class CalculateWidgets:
         lower_bound = target_mass - neighbor_range
         upper_bound = target_mass + neighbor_range
         neighbors = data[
-            (data[mass_col].astype(float).between(lower_bound, upper_bound)) &
+            (data['mass'].astype(float).between(lower_bound, upper_bound)) &
             (data["Relative Intensity (%)"].astype(float) >= neighbour_limit)
         ].copy()
 
         if not neighbors.empty:
-            neighbors["mass_diff"] = (neighbors[mass_col].astype(float) - target_mass).round(6)
+            neighbors["mass_diff"] = (neighbors['mass'].astype(float) - target_mass).round(6)
         return neighbors.sort_values("mass_diff") if not neighbors.empty else neighbors
 
 
     def near_peak_match(self, neighbors):
-        """邻近峰PTMs匹配（修复类型转换问题）"""
+        """邻近峰PTMs匹配（直接使用标准化列名）"""
         if neighbors.empty:
             return pd.DataFrame()
 
@@ -74,10 +77,7 @@ class CalculateWidgets:
         ppm_threshold = float(st.session_state.feature_state['ppm_threshold'])
         
         # 从feature_state获取参数
-        target_mass = st.session_state.feature_state['selected_mass']
-        ptms_rules = st.session_state.ptms_list
-        ppm_threshold = st.session_state.feature_state['ppm_threshold']
-        intensity_col = st.session_state.feature_state['intensity_col']
+        ptms_rules = st.session_state.feature_state['ptms_list']
         # 新增同位素偏移量参数获取 (例如: [0, 1, -1, 2, -2])
         isotope_offsets = st.session_state.feature_state.get('isotope_offsets', [0, 1, -1])  # 默认值保持原有逻辑
 
@@ -128,15 +128,15 @@ class CalculateWidgets:
         if 'Relative Intensity (%)' not in neighbors.columns:
             neighbors['Relative Intensity (%)'] = 0  # 防止空值
 
-        # 列名映射修正（匹配实际列名）
+        # 列名映射修正（直接使用标准化列名）
         display_columns = {
-            st.session_state.feature_state["mass_col"]: 'Mass (Da)',
+            'mass': 'Mass (Da)',
             'mass_diff': 'Delta Mass(Da)',
             'PTMS Modification': 'PTMS',
             'ppm': 'ppm',  # 直接使用ppm列
             'Correction_Type': 'Isotopic Shift(Da)',
             'Relative Intensity (%)': 'Relative Intensity(%)', 
-            st.session_state.feature_state["feature_col"]: 'Feature ID'
+            'feature': 'Feature ID'
         }
 
         valid_columns = [col for col in display_columns.keys() if col in neighbors.columns]
@@ -153,11 +153,28 @@ class CalculateWidgets:
             if col in neighbors_diff.columns:
                 neighbors_diff[col] = pd.to_numeric(neighbors_diff[col], errors='coerce').round(2)  # 增加二次舍入
 
+        # 修复Feature ID列的数据类型问题：将list转换为字符串
+        if 'Feature ID' in neighbors_diff.columns:
+            neighbors_diff['Feature ID'] = neighbors_diff['Feature ID'].apply(
+                lambda x: ', '.join(map(str, x)) if isinstance(x, list) else str(x)
+            )
+
         return neighbors_diff
 
-    def process_integration(self, df):
-        """积分数据处理（添加显式类型转换）"""
-        if df is None:
+    def process_integration(self, df, sample=None):
+        """积分数据处理（直接使用标准化列名）"""
+        if df is None or df.empty:
+            return pd.DataFrame()
+
+        # 检查必要的列是否存在
+        required_cols = ['mass', 'time', 'intensity']
+        if not all(col in df.columns for col in required_cols):
+            st.error(f"数据缺少必要列: {required_cols}")
+            return pd.DataFrame()
+
+        # 检查积分范围是否设置
+        if not st.session_state.feature_state.get('time_range') or not st.session_state.feature_state.get('mass_range'):
+            st.warning("请先在热力图中框选积分范围")
             return pd.DataFrame()
 
         # 显式类型转换
@@ -165,17 +182,23 @@ class CalculateWidgets:
         mass_range = [float(x) for x in st.session_state.feature_state['mass_range']]
         
         try:
-            time_mask = df[st.session_state.feature_state['time_col']].astype(float).between(*sorted(time_range))
-            mass_mask = df[st.session_state.feature_state['mass_col']].astype(float).between(*sorted(mass_range))
+            time_mask = df['time'].astype(float).between(*sorted(time_range))
+            mass_mask = df['mass'].astype(float).between(*sorted(mass_range))
             
-            integrated = df[time_mask & mass_mask].groupby(
-                df[st.session_state.feature_state['mass_col']].astype(float)
+            # 应用强度矫正系数（如果提供了样本配置）
+            working_df = df.copy()
+            if sample and sample.get('intensity_scale'):
+                intensity_scale = sample.get('intensity_scale', 1.0)
+                working_df['intensity'] = working_df['intensity'] * intensity_scale
+            
+            integrated = working_df[time_mask & mass_mask].groupby(
+                working_df['mass'].astype(float)
             ).agg({
-                st.session_state.feature_state['intensity_col']: lambda x: pd.to_numeric(x, errors='coerce').sum(),
-                st.session_state.feature_state['feature_col']: lambda x: list(x.astype(str).unique())
+                'intensity': lambda x: pd.to_numeric(x, errors='coerce').sum(),
+                'feature': lambda x: list(x.astype(str).unique()) if 'feature' in working_df.columns else []
             }).reset_index()
             
-            return integrated if not integrated.empty else None
+            return integrated if not integrated.empty else pd.DataFrame()
         except Exception as e:
             st.error(f"数据处理失败: {str(e)}")
-            return None
+            return pd.DataFrame()
