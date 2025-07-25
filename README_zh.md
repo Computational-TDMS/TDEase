@@ -147,7 +147,8 @@ TDpipe 使用pyQt进行图形化界面的展示,其内容存储于`GUI`文件夹
 我们的web服务框架是基于[streamlit](https://docs.streamlit.io/develop/api-reference)进行搭建的.因此如果您要进行合作开发以及调试的话,请在TDvis文件夹下运行指令:
 
 ```pwsh
-streamlit run MainPage.py
+cd TDvis
+python launch.py
 ```
 
 

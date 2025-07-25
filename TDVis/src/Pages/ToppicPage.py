@@ -46,22 +46,20 @@ class ToppicShowPage():
         return file_map
 
     def show_toppic(self):
-        report_path = FileUtils.get_html_report_path(st.session_state['user_select_file'], st.session_state['sample'])
-
-        if not report_path or not os.path.exists(report_path):
-            st.warning("Toppic报告的_HTML部分不存在")
-            return 
-
         file_map = self._get_tsv_files()
+        
+        if not file_map:
+            st.warning("未找到任何Toppic报告文件")
+            return
+
         col = st.columns(2)
         
         with col[0]:
             # 替换为本地化标题
             st.write(self.locale.get("detailed_file_view", "**详细文件查看**"))
         with col[1]:
-            # 替换为本地化按钮标签
-            button_label = self.locale.get("open_toppic_report", "📑 打开Toppic报告")
-            st.link_button(button_label, url=ServerControl.get_url())
+            # 移除HTML按钮，只保留标题
+            st.write("")
 
         # 替换选项卡标题为本地化名称（假设file_suffixes的键已本地化）
         tab_titles = [ f"📊 {display_name}"  for display_name in self.file_suffixes.keys()]
@@ -69,7 +67,7 @@ class ToppicShowPage():
         
         for idx, (display_name, suffix) in enumerate(self.file_suffixes.items()):
             with tabs[idx]:
-                if suffix in file_map:
+                if file_map and suffix in file_map:
                     self._display_tab_content(file_map[suffix], suffix)
                 else:
                     # 替换为本地化警告（支持文件名格式化）

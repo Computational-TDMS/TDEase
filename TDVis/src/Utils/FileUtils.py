@@ -61,9 +61,6 @@ class FileUtils:
         for entry in os.scandir(resolved_path):
             if entry.is_dir() and entry.name == target_folder:  # 精确匹配文件夹名称
                 return os.path.join(resolved_path, entry.name)
-        st.write(f"[DEBUG] 搜索路径: {resolved_path}")
-        st.write(f"[DEBUG] 期待文件夹: {target_folder}")
-        st.write(f"[DEBUG] 实际存在的文件夹: {[e.name for e in os.scandir(resolved_path) if e.is_dir()]}")
         # raise FileNotFoundError(f"未找到HTML报告文件夹: {target_folder}")
 
 
@@ -81,6 +78,17 @@ class FileUtils:
             if filename.endswith(target_suffix):
                 return os.path.join(resolved_path, filename)
         raise FileNotFoundError(f"未找到指定后缀文件: {target_suffix}")
+
+    @staticmethod
+    def has_html_report(selected_path=None, sample_name=None):
+        """
+        判断指定样本的HTML报告是否存在（包括文件夹和index.html）
+        """
+        html_dir = FileUtils.get_html_report_path(selected_path, sample_name)
+        if not html_dir:
+            return False
+        html_index = os.path.join(html_dir, "topmsv", "index.html")
+        return os.path.exists(html_index)
 
 
 #  用户管理查询代码

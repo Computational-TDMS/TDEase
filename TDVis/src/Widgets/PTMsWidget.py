@@ -38,8 +38,8 @@ class PTMsWidget:
         ptms_type_label = self.locale.get("ptms_type_label", "PTMs Type")
         batch_input_button = self.locale.get("batch_input_button", "批量输入")
         parse_error = self.locale.get("parse_error", "解析失败: {0}，请确保输入格式为合法JSON数组")
-        correct_format = '''正确输入格式:[{"mass_diff": 15.9949, "name": "Oxidation"}, 
-{"mass_diff": 42.01, "name": "Acetylation"}]'''
+        correct_format = '''正确输入格式:[{"mass_diff": 15.9949, "name": "氧化"}, 
+{"mass_diff": 74.02100, "name": "乙酰化"}]'''
         ppm_threshold_label = self.locale.get("ppm_threshold_label", "匹配精度阈值 (ppm)")
         ppm_threshold_help = self.locale.get("ppm_threshold_help", "若精度高于该阈值,则认为超出质谱精度容忍范围,无匹配的修饰")
         
@@ -148,31 +148,42 @@ class PTMsWidget:
                     st.warning(no_prsm_info_warning)
                     return
 
-                st.dataframe(
-                    prsmid[['URL', 'E-value']],
-                    column_config={
-                        "URL": st.column_config.LinkColumn(
-                            prsm_link_column,
-                            help=prsm_link_help,
-                            validate="^http",
-                            max_chars=100
-                        ),
-                        "E-value": st.column_config.NumberColumn(
-                            format="%.2e",
-                            disabled=True
-                        )
-                    },
-                    hide_index=True,
-                    use_container_width=True
-                )
+                html_available = st.session_state.get("html_available", False)
+                if html_available and 'URL' in prsmid.columns:
+                    # 显示带链接
+                    display_cols = ['URL'] + [col for col in [ 'E-value','Prsm ID', 'Scan(s)', 'Proteoform'] if col in prsmid.columns]
+                    st.dataframe(
+                        prsmid[display_cols],
+                        column_config={
+                            "URL": st.column_config.LinkColumn(
+                                prsm_link_column,
+                                help=prsm_link_help,
+                                validate="^http",
+                                max_chars=100
+                            ),
+                            "E-value": st.column_config.NumberColumn(
+                                format="%.2e",
+                                disabled=True
+                            )
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                else:
+                    # 只显示 Prsm ID、Scan(s)、Proteoform、E-value
+                    show_cols = [col for col in ['E-value','Prsm ID', 'Scan(s)', 'Proteoform',] if col in prsmid.columns]
+                    st.dataframe(
+                        prsmid[show_cols],
+                        hide_index=True,
+                        use_container_width=True
+                    )
 
     def near_peak_widget(self, data):
-        """邻近峰筛选控制（状态从feature_state获取）"""
+        """邻近峰筛选控制（直接使用标准化列名）"""
         # 从feature_state获取状态
         selected_mass = st.session_state.feature_state['selected_mass']
         neighbor_range = st.session_state.feature_state['neighbor_range']
         neighbour_limit = st.session_state.feature_state['neighbour_limit']
-        mass_col = st.session_state.feature_state['mass_col']
 
         help_text = self.locale.get("near_peak_help", "邻近峰筛选是根据目标质量附近的峰来筛选的，筛选的范围由邻近峰质量范围和强度阈值控制。")
 
@@ -190,9 +201,9 @@ class PTMsWidget:
         with st.expander(self.locale.get("near_peak_expander", " **邻近峰筛选:** 以框选区域强度最高的峰作为基准")):
             col1, col2 = st.columns(2)
             with col1:
-                if not data.empty:
-                    current_min = float(data[mass_col].min())
-                    current_max = float(data[mass_col].max())
+                if not data.empty and 'mass' in data.columns:
+                    current_min = float(data['mass'].min())
+                    current_max = float(data['mass'].max())
                     clamped_value = min(max(float(selected_mass or 0), current_min), current_max)
                     manual_mass = st.number_input(
                         self.locale.get("manual_mass_label", "手动设置目标质量 (Da)"),
@@ -240,17 +251,30 @@ class PTMsWidget:
 
     def _get_prsm_id(self, ID):
         """根据featureID查询prsmID"""
+        # 创建FeatureLoader实例
+        column_map = {
+            'feature': ['Feature_ID', 'Feature ID'],
+            'mass': ['Monoisotopic_mass','Mass', 'Precursor_mz'],
+            'start_time':['Start_time', 'Min_time'],
+            'end_time':['End_time', 'Max_time'],
+            'time': ['Apex_time', 'Retention_time', 'RT'],
+            'intensity': ['Intensity', 'Height', 'Area']
+        }
+        loader = FeatureLoader(column_map, self.locale)
+        
         # 修复参数顺序和名称
-        df2 = FeatureLoader.load_prsm_data(
+        df2 = loader.load_prsm_data(
             selected_path=st.session_state['user_select_file'],
             sample_name=st.session_state['sample'],  # 明确使用命名参数
         )
-        if df2.empty:
+        if df2 is None or df2.empty:
             return pd.DataFrame()
 
         # 添加列名检查和类型转换
         feature_col = 'Feature ID'
         prsm_col = 'Prsm ID'
+        scan_col = 'Scan(s)'
+        proteoform_col = 'Proteoform'
         evalue_col = next((col for col in ['E-value', 'E_value', 'E Value'] if col in df2.columns), None)
 
         # 转换ID类型为与数据框一致
@@ -262,25 +286,32 @@ class PTMsWidget:
         if matches.empty:
             return pd.DataFrame()
 
-        # 创建包含链接的DataFrame
-        result_df = matches[[prsm_col, evalue_col]].copy() if evalue_col else matches[[prsm_col]].copy()  # 显式保留关键列
-        # 添加获取本地IP的逻辑
-        def get_local_ip():
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
-                return s.getsockname()[0]
-            except Exception:
+        # 确保Proteoform列为字符串类型
+        if proteoform_col in matches.columns:
+            matches[proteoform_col] = matches[proteoform_col].astype(str)
+
+        # 选择需要的列
+        required_cols = [col for col in [prsm_col, scan_col, proteoform_col, evalue_col] if col in matches.columns]
+        result_df = matches[required_cols].copy()
+
+        # 检查HTML是否可用，如果可用则添加URL列
+        html_available = st.session_state.get("html_available", False)
+        if html_available:
+            # 添加获取本地IP的逻辑
+            def get_local_ip():
                 try:
-                    return socket.gethostbyname(socket.gethostname())
-                except:
-                    return "localhost"
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.connect(("8.8.8.8", 80))
+                    return s.getsockname()[0]
+                except Exception:
+                    try:
+                        return socket.gethostbyname(socket.gethostname())
+                    except:
+                        return "localhost"
 
-        result_df['URL'] = result_df[prsm_col].apply(
-            lambda x: f"http://{get_local_ip()}:8000/topmsv/visual/prsm.html?folder=../../toppic_prsm_cutoff/data_js&protein={x}"
-        )
+            result_df['URL'] = result_df[prsm_col].apply(
+                lambda x: f"http://{get_local_ip()}:8000/topmsv/visual/prsm.html?folder=../../toppic_prsm_cutoff/data_js&protein={x}"
+            )
 
-        if evalue_col:
-            return result_df[['URL', evalue_col]].rename(columns={evalue_col: 'E-value'})
-        return result_df[['URL']]
+        return result_df
         

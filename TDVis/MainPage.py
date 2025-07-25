@@ -8,6 +8,28 @@ from tkinter import filedialog
 class MainPage():
     def __init__(self):
         st.session_state.setdefault("language", "zh")
+        
+        # 清理可能存在的无效路径
+        self._cleanup_invalid_paths()
+    
+    def _cleanup_invalid_paths(self):
+        """清理session_state中可能存在的无效文件路径"""
+        # 检查并清理无效的文件路径
+        if "user_select_file" in st.session_state:
+            file_path = st.session_state["user_select_file"]
+            if not os.path.exists(file_path):
+                st.warning(f"检测到无效的文件路径，已自动清理: {file_path}")
+                st.session_state.pop("user_select_file", None)
+        
+        # 清理其他可能相关的无效路径
+        invalid_keys = []
+        for key in st.session_state.keys():
+            if isinstance(st.session_state[key], str) and os.path.sep in st.session_state[key]:
+                if not os.path.exists(st.session_state[key]):
+                    invalid_keys.append(key)
+        
+        for key in invalid_keys:
+            st.session_state.pop(key, None)
 
     def run(self):
         self.show_language_switcher()
@@ -15,10 +37,14 @@ class MainPage():
             if st.button("📁", key="select_folder"):
                 selected_dir = self._open_directory_dialog()
                 if selected_dir:
-                    st.session_state["user_select_file"] = selected_dir
-                    # 选择新文件夹时清除所有样本选择
-                    st.session_state.pop("sample", None)
-                    st.session_state.pop("sample2", None)
+                    # 验证选择的目录是否存在
+                    if os.path.exists(selected_dir):
+                        st.session_state["user_select_file"] = selected_dir
+                        # 选择新文件夹时清除所有样本选择
+                        st.session_state.pop("sample", None)
+                        st.session_state.pop("sample2", None)
+                    else:
+                        st.error(f"选择的目录不存在: {selected_dir}")
 
         ReportPage().run()
 
@@ -29,7 +55,7 @@ class MainPage():
         with st.sidebar:
             lang = st.selectbox(
                 "🌐 Language / 语言",
-                ["zh", "en","ar","ru"],
+                ["zh", "en"],
             )
             # 保存用户选择的语言
             st.session_state["language"] = lang

@@ -61,19 +61,30 @@ class ReportPage():
                     )
 
     def show_report_page(self):
-        # 首先直接启动toppic服务（保持不变）
-        self.html_path = FileUtils.get_html_report_path(st.session_state['user_select_file'],st.session_state['sample'])
-        ServerControl.start_report_server(self.html_path)
+        # 判断HTML报告是否存在
+        html_available = FileUtils.has_html_report(
+            st.session_state['user_select_file'],
+            st.session_state['sample']
+        )
+        st.session_state["html_available"] = html_available
+
+        if html_available:
+            self.html_path = FileUtils.get_html_report_path(
+                st.session_state['user_select_file'],
+                st.session_state['sample']
+            )
+            ServerControl.start_report_server(self.html_path)
+        else:
+            st.warning("未检测到HTML报告文件，未启动HTML服务。")
+            self.html_path = None
 
         st.title("TDvis")
-        
         def get_feature_files():
             return [
                 FileUtils.get_file_path("_ms1.feature",selected_path=st.session_state['user_select_file'],sample_name=st.session_state['sample']),
                 FileUtils.get_file_path("_ms2.feature",selected_path=st.session_state['user_select_file'],sample_name=st.session_state['sample'])
             ]
         feature_files = get_feature_files()
-
         #tab选择界面
         feature_tab,report_tab,toppic_tab,guide_tab = st.tabs([
             self.locale.get("feature_tab_label", "特征图谱"),
@@ -82,31 +93,31 @@ class ReportPage():
             self.locale.get("guide_tab_label", "使用指南")
         ])
         with feature_tab:
-            # 使用独立容器包裹组件
             with st.container():
                 feature = FeaturePage.Featuremap(self.locale)
                 feature.run()        
-
-        # 主报告页逻辑（保持不变）
         with report_tab:
-            self._count_report_files()
+            # 只在tab内输出统计
+            if html_available:
+                stat_lines = self._count_report_files_html()
+            else:
+                stat_lines = self._count_report_files()
+            if stat_lines:
+                for line in stat_lines:
+                    st.markdown(line)
             if feature_files:
                 self.selected_file = st.selectbox(self.locale.get("selec_feature_file","选择特征文件"), feature_files,key="feature_file")
             self.df = pd.read_csv(self.selected_file, sep='\t')
             self._display_data_grid()
-
         with toppic_tab:
             toppic=ToppicPage.ToppicShowPage(self.locale)
             toppic.run()
-
         with guide_tab:
             guide=UserGuide.UserGuide()
             guide.run()
-        
 
-
-    def _count_report_files(self):
-        """统计HTML报告相关文件数量"""
+    def _count_report_files_html(self):
+        """有HTML报告时统计蛋白质/变体/特征数目，返回markdown行"""
         try:
             base_path = os.path.join(
                 self.html_path,
@@ -129,11 +140,78 @@ class ReportPage():
                     results.append(f" **{display_name}**: {file_count} {self.locale.get('units', '个')}")
                 else:
                     results.append(f"{self.locale.get('folder_not_found_prefix', '⚠️')} {display_name}{self.locale.get('folder_not_found_suffix', '目录不存在')}")
-            st.markdown(self.locale.get("sample_detected_prefix", "__本样品共检测到:__"))
-            st.markdown("\n".join(results))
+            lines = [self.locale.get("sample_detected_prefix", "__本样品共检测到:__")]
+            lines += results
+            return lines
         except Exception as e:
             st.sidebar.error(self.locale.get("file_count_failed", "文件统计失败: ") + str(e))
-            
+            return []
+
+    def _count_report_files(self):
+        """统计HTML报告相关文件数量（无HTML时），返回markdown行"""
+        try:
+            proteoform_file = FileUtils.get_file_path("_ms2_toppic_proteoform_single.tsv", 
+                                                     selected_path=st.session_state['user_select_file'], 
+                                                     sample_name=st.session_state['sample'])
+            prsm_file = FileUtils.get_file_path("_ms2_toppic_prsm_single.tsv", 
+                                               selected_path=st.session_state['user_select_file'], 
+                                               sample_name=st.session_state['sample'])
+            results = []
+            if proteoform_file and os.path.exists(proteoform_file):
+                try:
+                    with open(proteoform_file, 'r') as f:
+                        empty_line_idx = None
+                        for i, line in enumerate(f):
+                            if not line.strip():
+                                empty_line_idx = i
+                                break
+                    df_proteoform = pd.read_csv(
+                        proteoform_file,
+                        sep='\t',
+                        skiprows=empty_line_idx + 1 if empty_line_idx is not None else 0,
+                        header=0,
+                        on_bad_lines='warn',
+                        dtype=str,
+                        engine='python',
+                        quoting=3
+                    ).dropna(how='all')
+                    proteoform_count = len(df_proteoform)
+                    results.append(f" **{self.locale.get('proteoforms', '变体')}**: {proteoform_count} {self.locale.get('units', '个')}")
+                except Exception as e:
+                    results.append(f"{self.locale.get('folder_not_found_prefix', '⚠️')} {self.locale.get('proteoforms', '变体')}{self.locale.get('folder_not_found_suffix', '统计失败')}: {str(e)}")
+            else:
+                results.append(f"{self.locale.get('folder_not_found_prefix', '⚠️')} {self.locale.get('proteoforms', '变体')}{self.locale.get('folder_not_found_suffix', '文件不存在')}")
+            if prsm_file and os.path.exists(prsm_file):
+                try:
+                    with open(prsm_file, 'r') as f:
+                        empty_line_idx = None
+                        for i, line in enumerate(f):
+                            if not line.strip():
+                                empty_line_idx = i
+                                break
+                    df_prsm = pd.read_csv(
+                        prsm_file,
+                        sep='\t',
+                        skiprows=empty_line_idx + 1 if empty_line_idx is not None else 0,
+                        header=0,
+                        on_bad_lines='warn',
+                        dtype=str,
+                        engine='python',
+                        quoting=3
+                    ).dropna(how='all')
+                    feature_count = len(df_prsm)
+                    results.append(f" **{self.locale.get('prsms', '特征')}**: {feature_count} {self.locale.get('units', '个')}")
+                except Exception as e:
+                    results.append(f"{self.locale.get('folder_not_found_prefix', '⚠️')} {self.locale.get('prsms', '特征')}{self.locale.get('folder_not_found_suffix', '统计失败')}: {str(e)}")
+            else:
+                results.append(f"{self.locale.get('folder_not_found_prefix', '⚠️')} {self.locale.get('prsms', '特征')}{self.locale.get('folder_not_found_suffix', '文件不存在')}")
+            lines = [self.locale.get("sample_detected_prefix", "__本样品共检测到:__")]
+            lines += results
+            return lines
+        except Exception as e:
+            st.sidebar.error(self.locale.get("file_count_failed", "文件统计失败: ") + str(e))
+            return []
+
     def _display_data_grid(self):
         """配置Streamlit原生表格显示"""
         # 获取本地化文本，若不存在则使用默认值
