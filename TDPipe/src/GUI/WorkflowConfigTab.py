@@ -83,7 +83,9 @@ class WorkflowConfigTab(QWidget):
         layout = QHBoxLayout()
         ms_file_path_edit = QLineEdit()
         ms_file_path_edit.setPlaceholderText("Please select the path of MS files")
-        ms_file_path_edit.textChanged.connect(lambda text: self.args.set_config('msfile', None, [text.split(';')]))
+        ms_file_path_edit.textChanged.connect(
+            lambda text: self.args.set_config('msfile', None, text.replace('\\', '/').split(';'))
+        )
         self.ui['msfile'] = ms_file_path_edit
         browse_btn = QPushButton("Browse")
         browse_btn.clicked.connect(lambda: self._browse_ms_files(ms_file_path_edit))
