@@ -187,3 +187,5 @@ TDvis 通过获取TDpipe所处理生成的TopPic HTML文件去进行进行可交
 
 ## 出版论文
 如果您觉得我们的工作对您有帮助,欢迎您在您的论文中引用我们的工作:
+
+Liao Y, Qian R, Zhang M, et al. TDEase: An Open‐Source Data Visualization Software Framework for Targeted Proteoform Characterization by Top‐Down Proteomics[J]. Proteomics, 2025: e70031.

@@ -119,8 +119,7 @@ streamlit run MainPage.py
 ## Publications && Citation
 If you find our work helpful, please consider citing us in your publications.
 
-Yucheng Liao, Rui Qian, Mengting Zhang, et al. TDEase: an Open-Source Data Visualization Software Framework for Targeted Proteoform Characterization by Top-Down Proteomics. Authorea. June 10, 2025.
-DOI: 10.22541/au.174954634.41701842/v1
+Liao Y, Qian R, Zhang M, et al. TDEase: An Open‐Source Data Visualization Software Framework for Targeted Proteoform Characterization by Top‐Down Proteomics[J]. Proteomics, 2025: e70031.
 
 
 
